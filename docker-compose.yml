@@ -1,0 +1,44 @@
+# Single-laptop setup: LiveKit + the app on one machine, for one user.
+#
+#   docker compose up -d --build     # first run / after code changes
+#   docker compose up -d             # later runs
+#   docker compose down              # stop
+#
+# Then open http://localhost:3000
+#
+# The app shares the LiveKit container's network namespace, so both the
+# server-side bot and the browser reach LiveKit at localhost:7880, and the
+# 127.0.0.1 ICE candidate LiveKit advertises is reachable from both.
+# Ports are bound to 127.0.0.1 only: nothing on the local network can reach
+# the app (and spend Gemini credits through it).
+#
+# Needs .env.local next to this file with at least GEMINI_API_KEY.
+# LiveKit URL and keys from .env.local are overridden below.
+
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --dev --node-ip 127.0.0.1 --bind 0.0.0.0
+    environment:
+      LIVEKIT_KEYS: "devkey: secret"
+    ports:
+      - "127.0.0.1:3000:3000" # the app (shares this network namespace)
+      - "127.0.0.1:7880:7880"
+      - "127.0.0.1:7881:7881"
+      - "127.0.0.1:7882:7882/udp"
+    restart: unless-stopped
+
+  app:
+    build: .
+    network_mode: "service:livekit"
+    depends_on:
+      - livekit
+    env_file: .env.local
+    environment:
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      LIVEKIT_URL: ws://localhost:7880
+      NEXT_PUBLIC_LIVEKIT_URL: ws://localhost:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: secret
+    restart: unless-stopped
